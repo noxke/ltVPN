@@ -2,6 +2,14 @@
 
 基于TLS的轻量隧道VPN
 
+> 300Mbps route mode (E3-1230v2)
+
+![](assets/2024-06-09-01-44-21-image.png)
+
+> 250Mbps forword mode (E3-1230v2)
+
+![](assets/2024-06-09-01-53-05-image.png)
+
 ## build
 
 - 安装编译环境
