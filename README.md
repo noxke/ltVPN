@@ -119,7 +119,7 @@ passwd=passwd
 # Options:
 #   -c <dir>   Specify the configuration directory
 #   -d         Run in daemon mode
-#  -h         Print this help message and exit
+#   -h         Print this help message and exit
 ```
 
 - VPN客户端
