@@ -28,7 +28,7 @@
 #include "fd_dbg.h"
 
 #define IP_POOL_SIZE 256  // IP池大小，适用于 /24 子网
-#define TUN_BUF_SIZE 2000
+#define TUN_BUF_SIZE 1500
 
 int listen_sock = -1;
 int tun_fd = -1;
@@ -272,6 +272,8 @@ void vpnServerClientMain(SSL *ssl, int pipe_fd)
     int sock_fd = SSL_get_fd(ssl);
     while (1)
     {
+        int len;
+
         fd_set readFDSet;
         FD_ZERO(&readFDSet);
         FD_SET(sock_fd, &readFDSet);
@@ -279,23 +281,41 @@ void vpnServerClientMain(SSL *ssl, int pipe_fd)
         select(FD_SETSIZE, &readFDSet, NULL, NULL, NULL);
         if (FD_ISSET(sock_fd, &readFDSet)) {
             // 客户端发给服务端数据 转发到tun设备
-            int len = SSL_read(ssl, buf, sizeof(buf));
-            if (len == 0)
+            len = SSL_read(ssl, buf, sizeof(buf));
+            if (len <= 0)
             {
+                if (len < 0)
+                {
+                    fprintf(stderr, "SSL_read() failed: (%d) %s\n", errno, strerror(errno));
+                    continue;
+                }
                 break;
             }
-            int ret = write(tun_fd, buf, len);
-            if (ret < 0)
+            DBG_DUMP_SIMPLE("ssl->tun", buf, len);
+            len = write(tun_fd, buf, len);
+            if (len < 0)
             {
-                fprintf(stderr, "tunfd write() failed: (%d) %s", errno, strerror(errno));
+                fprintf(stderr, "tun_fd write() failed: (%d) %s\n", errno, strerror(errno));
                 break;
             }
         }
         else if (FD_ISSET(pipe_fd, &readFDSet))
         {
             // 服务器发送给客户端数据 转发到ssl
-            int len = read(pipe_fd, buf, sizeof(buf));
-            SSL_write(ssl, buf, len);
+            // 先读取管道中数据长度
+            read(pipe_fd, &len, sizeof(len));
+            // 再读取管道中数据
+            len = read(pipe_fd, buf, len);
+            if (len < 0)
+            {
+                fprintf(stderr, "pipe_fd read() failed: (%d) %s\n", errno, strerror(errno));
+            }
+            DBG_DUMP_SIMPLE("tun->ssl", buf, len);
+            len = SSL_write(ssl, buf, len);
+            if (len < 0)
+            {
+                fprintf(stderr, "SSL_write() failed: (%d) %s\n", errno, strerror(errno));
+            }
         }
     }
 }
@@ -307,6 +327,8 @@ void *vpnServerTunThread(void *null_arg) {
     char ip_dst[INET_ADDRSTRLEN];
     while (1)
     {
+        int len;
+
         fd_set readFDSet;
         FD_ZERO(&readFDSet);
         FD_SET(tun_fd, &readFDSet);
@@ -314,9 +336,9 @@ void *vpnServerTunThread(void *null_arg) {
         select(FD_SETSIZE, &readFDSet, NULL, NULL, NULL);
         if (FD_ISSET(tun_fd, &readFDSet)) {
             bzero(buf, sizeof(buf));
-            int len = read(tun_fd, buf, sizeof(buf));
+            len = read(tun_fd, buf, sizeof(buf));
             if (len < 0) {
-                fprintf(stderr, "tunfd read() failed: (%d) %s", errno, strerror(errno));
+                fprintf(stderr, "tun_fd read() failed: (%d) %s\n", errno, strerror(errno));
                 break;
             }
             struct in_addr addr;
@@ -339,13 +361,24 @@ void *vpnServerTunThread(void *null_arg) {
                 // 客户端对端不存在
                 continue;
             }
-            write(pipe_fd, buf, len);
+            // 第一次先将数据长度写入
+            write(pipe_fd, &len, sizeof(len));
+            // 第二次写入真实数据
+            len = write(pipe_fd, buf, len);
+            if (len < 0)
+            {
+                fprintf(stderr, "pipe_fd write() failed: (%d) %s\n", errno, strerror(errno));
+            }
         }
         else if (FD_ISSET(global_client_pipe[0], &readFDSet))
         {
             // 客户端离线消息
             char off_msg[32];
-            read(global_client_pipe[0], off_msg, sizeof(off_msg));
+            len = read(global_client_pipe[0], off_msg, sizeof(off_msg));
+            if (len < 0)
+            {
+                fprintf(stderr, "pipe_fd read() failed: (%d) %s\n", errno, strerror(errno));
+            }
             int index = -1;
             sscanf(off_msg, "client [%d] offline", &index);
             if (index < 0)

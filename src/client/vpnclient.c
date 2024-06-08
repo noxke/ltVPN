@@ -20,7 +20,7 @@
 // #define WITH_DBG
 #include "fd_dbg.h"
 
-#define TUN_BUF_SIZE 2000
+#define TUN_BUF_SIZE 1500
 
 void vpnClientMain(SSL *ssl)
 {
@@ -69,6 +69,8 @@ void vpnClientMain(SSL *ssl)
     int sock_fd = SSL_get_fd(ssl);
     while (1)
     {
+        int len;
+
         fd_set readFDSet;
         FD_ZERO(&readFDSet);
         FD_SET(sock_fd, &readFDSet);
@@ -76,25 +78,38 @@ void vpnClientMain(SSL *ssl)
         select(FD_SETSIZE, &readFDSet, NULL, NULL, NULL);
         if (FD_ISSET(sock_fd, &readFDSet)) {
             // 客户端发给服务端数据 转发到tun设备
-            int len = SSL_read(ssl, buf, sizeof(buf));
-            if (len == 0)
+            len = SSL_read(ssl, buf, sizeof(buf));
+            if (len <= 0)
             {
+                if (len < 0)
+                {
+                    fprintf(stderr, "SSL_read() failed: (%d) %s\n", errno, strerror(errno));
+                    continue;
+                }
                 break;
             }
             DBG_DUMP_SIMPLE("ssl->tun", buf, len);
-            int ret = write(tun_fd, buf, len);
-            if (ret < 0)
+            len = write(tun_fd, buf, len);
+            if (len < 0)
             {
-                fprintf(stderr, "tunfd write() failed: (%d) %s", errno, strerror(errno));
+                fprintf(stderr, "tun_fd write() failed: (%d) %s\n", errno, strerror(errno));
                 break;
             }
         }
         else if (FD_ISSET(tun_fd, &readFDSet))
         {
             // 服务器发送给客户端数据 转发到ssl
-            int len = read(tun_fd, buf, sizeof(buf));
+            len = read(tun_fd, buf, sizeof(buf));
+            if (len < 0)
+            {
+                fprintf(stderr, "tun_fd read() failed: (%d) %s\n", errno, strerror(errno));
+            }
             DBG_DUMP_SIMPLE("tun->ssl", buf, len);
-            SSL_write(ssl, buf, len);
+            len = SSL_write(ssl, buf, len);
+            if (len < 0)
+            {
+                fprintf(stderr, "SSL_write() failed: (%d) %s\n", errno, strerror(errno));
+            }
         }
     }
 }
