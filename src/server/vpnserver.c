@@ -323,8 +323,6 @@ void vpnServerClientMain(SSL *ssl, int pipe_fd)
 // 父进程tun线程
 void *vpnServerTunThread(void *null_arg) {
     char buf[TUN_BUF_SIZE];
-    // char ip_src[INET_ADDRSTRLEN];
-    char ip_dst[INET_ADDRSTRLEN];
     while (1)
     {
         int len;
@@ -341,15 +339,23 @@ void *vpnServerTunThread(void *null_arg) {
                 fprintf(stderr, "tun_fd read() failed: (%d) %s\n", errno, strerror(errno));
                 break;
             }
-            struct in_addr addr;
+            // char ip_src[INET_ADDRSTRLEN];
+            // char ip_dst[INET_ADDRSTRLEN];
+            // struct in_addr addr;
             // src
             // addr.s_addr = *(int *)(buf+12);
             // inet_ntop(AF_INET, &addr, ip_src, INET_ADDRSTRLEN);
             // dst
-            addr.s_addr = *(int *)(buf+16);
-            inet_ntop(AF_INET, &addr, ip_dst, INET_ADDRSTRLEN);
+            // addr.s_addr = *(int *)(buf+16);
+            // inet_ntop(AF_INET, &addr, ip_dst, INET_ADDRSTRLEN);
             // printf("src: %s\ndst: %s\n", ip_src, ip_dst);
-            int index = get_ip_index(&ip_pool, ip_dst);
+            // int index = get_ip_index(&ip_pool, ip_dst);
+            int addr = *(int *)(buf+16);
+            int index = -1;
+            if ((addr & ip_pool.mask) == (ip_pool.base_ip & ip_pool.mask)) {
+                index = ntohl(addr) - ntohl(ip_pool.base_ip & ip_pool.mask);
+            }
+
             if (index < 0 || index >= IP_POOL_SIZE)
             {
                 // 错误大小的ip包，跳过
