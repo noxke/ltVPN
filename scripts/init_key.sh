@@ -70,7 +70,7 @@ openssl genrsa -des3 \
 
 # 生成签名请求
 CONFIG_DIR="$CONFIG_DIR" \
-REQ_PASSWD="$CA_PASSWD" \
+REQ_PASSWD="$SERVER_PASSWD" \
 commonName="$SERVER_commonName" \
 countryName="$SERVER_countryName" \
 stateOrProvinceName="$SERVER_stateOrProvinceName" \
